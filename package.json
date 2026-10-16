@@ -1,0 +1,11 @@
+{
+  "name": "coderoot-eth-action",
+  "private": true,
+  "description": "Release tooling only. The Action itself (action.yml, src/) ships with no dependencies and nothing here is installed in a consumer's pipeline.",
+  "devDependencies": {
+    "semantic-release": "^25.0.9",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.10",
+    "semantic-release-major-tag": "^0.3.2"
+  }
+}

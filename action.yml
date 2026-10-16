@@ -1,0 +1,221 @@
+# The CodeRoot Action. One Action, three modes:
+#
+#   check   dependency verdicts at build time  (`coderoot verify --sbom|--lockfile`)
+#   submit  a release for a person's approval  (flow published or staged)
+#   verify  the deploy-time check              (`coderoot verify --hash|--file`)
+#
+# The Action never holds a registry token and never publishes. check and verify
+# need `permissions: contents: read`; submit also needs `id-token: write`.
+
+name: "CodeRoot"
+description: "Verify what you pull and submit what you ship: dependency verdicts, the approval gate, and the deploy-time check."
+author: "CodeRoot"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  mode:
+    description: "check | submit | verify. One mode per step; use several steps for several modes."
+    required: true
+
+  # --- check ---
+  sbom:
+    description: "check: path to a CycloneDX or SPDX document."
+    required: false
+  lockfile:
+    description: "check: path to an npm package-lock.json (lockfileVersion 2 or 3). Not both sbom and lockfile."
+    required: false
+    default: ""
+
+  # --- verify ---
+  hash:
+    description: "verify: a tagged digest, e.g. sha256:<64 hex>."
+    required: false
+  artifact:
+    description: "verify: a file to hash and check. submit: the tarball that was published or staged (required)."
+    required: false
+
+  # --- submit ---
+  flow:
+    description: "submit: how the release reached npm: published | staged (required for submit)."
+    required: false
+    default: ""
+  stage-id:
+    description: "submit, flow staged: the npm stage id. Read from `npm-output` when absent."
+    required: false
+    default: ""
+  npm-output:
+    description: "submit, flow staged: a file holding the output of `npm stage publish`, to read the stage id from."
+    required: false
+    default: ""
+  provenance-bundle:
+    description: "submit, flow staged: the Sigstore provenance bundle npm attached to the staged version (staged with `--provenance-file`). Uploaded to the gate and bound by hash."
+    required: false
+    default: ""
+  registry:
+    description: "submit, flow published: the registry whose dist.integrity the artifact must match."
+    required: false
+    default: "https://registry.npmjs.org"
+  registry-wait:
+    description: "submit, flow published: seconds to wait for a new version to become visible on the registry."
+    required: false
+    default: "300"
+  oidc-audience:
+    description: "submit: the audience of the GitHub identity token used to sign in to the gate."
+    required: false
+    default: "secure.coderoot.app"
+  evidence:
+    description: "submit: path to a JSON array of evidence references, passed through verbatim."
+    required: false
+  signatures:
+    description: "submit: path to a JSON array of signature references, recorded as enrichment."
+    required: false
+  name:
+    description: "submit: package name. Read from package.json when absent."
+    required: false
+  version:
+    description: "submit: package version. Read from package.json when absent."
+    required: false
+  repo:
+    description: "submit: source repository URL. Read from the GitHub context when absent."
+    required: false
+  commit:
+    description: "submit: 40-hex commit sha. Read from GITHUB_SHA when absent."
+    required: false
+  note:
+    description: "submit: the submitter note recorded with the submission."
+    required: false
+  idempotency-key:
+    description: "submit: overrides the UUIDv4 key derived from the request body. The gate accepts UUIDv4 keys only."
+    required: false
+
+  # --- common ---
+  verify-endpoint:
+    description: "The verify endpoint."
+    required: false
+    default: "https://verify.coderoot.app"
+  submit-endpoint:
+    description: "The submit endpoint."
+    required: false
+    default: "https://secure.coderoot.app"
+  fail-open:
+    description: "true: an answer that could not be fully checked (verify unreachable, or the gate's revocations unread) warns and proceeds; false: it fails. Default: false for verify (a release job), true for check. A digest previously seen revoked fails either way."
+    required: false
+    default: ""
+  fail-on:
+    description: "The mildest result that still fails the step: unregistered | mismatch | revoked | never. Default: unregistered for verify, mismatch for check."
+    required: false
+    default: ""
+  report-path:
+    description: "Where to write the JSON report."
+    required: false
+    default: "coderoot-report.json"
+  artifact-name:
+    description: "Name of the uploaded report. Default coderoot-<mode>-report, numbered when a job runs the same mode twice."
+    required: false
+    default: ""
+
+outputs:
+  verdict:
+    description: "verify: the single verdict. check: the worst verdict seen."
+    value: ${{ steps.run.outputs.verdict }}
+  report:
+    description: "Path to the JSON report written by this step."
+    value: ${{ steps.run.outputs.report }}
+  submission-id:
+    description: "submit: the submission id returned by the gate."
+    value: ${{ steps.run.outputs.submission-id }}
+  review-url:
+    description: "submit: where a person reviews and attests the submission."
+    value: ${{ steps.run.outputs.review-url }}
+  exit-code:
+    description: "The exit code the mode produced, before fail-on softening. verify: 4 means the answer could not be fully checked (degraded); the step exits 3 by default."
+    value: ${{ steps.run.outputs.exit-code }}
+  degraded:
+    description: "check, verify: true when the answer could not be fully checked (verify unreachable, or the gate's revocations unread)."
+    value: ${{ steps.run.outputs.degraded }}
+
+# Composite rather than a Node action: the CLI it wraps is a separate package
+# with its own tests, and a composite keeps the Action a thin integration over
+# it instead of a second implementation. Stated in the README with this reason.
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "22"
+
+    # The key never matches; restore-keys picks the newest cache this ref can see.
+    - name: Restore the revoked cache
+      if: inputs.mode == 'check' || inputs.mode == 'verify'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/coderoot-revoked-cache
+        key: coderoot-revoked-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: coderoot-revoked-
+
+    - name: Run CodeRoot
+      id: run
+      shell: bash
+      env:
+        # Inputs reach the script through the environment, never interpolated
+        # into the script body, so a crafted input cannot run as shell.
+        CR_MODE: ${{ inputs.mode }}
+        CR_SBOM: ${{ inputs.sbom }}
+        CR_LOCKFILE: ${{ inputs.lockfile }}
+        CR_HASH: ${{ inputs.hash }}
+        CR_ARTIFACT: ${{ inputs.artifact }}
+        CR_EVIDENCE: ${{ inputs.evidence }}
+        CR_SIGNATURES: ${{ inputs.signatures }}
+        CR_NAME: ${{ inputs.name }}
+        CR_VERSION: ${{ inputs.version }}
+        CR_REPO: ${{ inputs.repo }}
+        CR_COMMIT: ${{ inputs.commit }}
+        CR_NOTE: ${{ inputs.note }}
+        CR_IDEMPOTENCY_KEY: ${{ inputs.idempotency-key }}
+        CR_VERIFY_ENDPOINT: ${{ inputs.verify-endpoint }}
+        CR_SUBMIT_ENDPOINT: ${{ inputs.submit-endpoint }}
+        CR_FLOW: ${{ inputs.flow }}
+        CR_STAGE_ID: ${{ inputs.stage-id }}
+        CR_NPM_OUTPUT: ${{ inputs.npm-output }}
+        CR_PROVENANCE_BUNDLE: ${{ inputs.provenance-bundle }}
+        CR_REGISTRY: ${{ inputs.registry }}
+        CR_REGISTRY_WAIT: ${{ inputs.registry-wait }}
+        CR_OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+        CR_FAIL_OPEN: ${{ inputs.fail-open }}
+        CR_FAIL_ON: ${{ inputs.fail-on }}
+        CR_REPORT_PATH: ${{ inputs.report-path }}
+        CR_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        CR_ACTION_PATH: ${{ github.action_path }}
+        CR_REVOKED_CACHE_DIR: ${{ runner.temp }}/coderoot-revoked-cache
+        CODEROOT_REVOKED_CACHE: ${{ runner.temp }}/coderoot/revoked-cache.json
+      run: node "$CR_ACTION_PATH/src/main.js"
+
+    # Save only from the default branch. Any branch can write a cache that other
+    # branches then restore, so saving from a pull request would let a fork seed
+    # an entry and fail everyone else's builds. Restoring stays unrestricted:
+    # reading a revocation someone else recorded is the point.
+    #
+    # always(): a step that just learned a revocation has exited 1.
+    - name: Save the revoked cache
+      if: >-
+        always()
+        && steps.run.outputs.revoked-cache-changed == 'true'
+        && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        && github.event_name != 'pull_request'
+        && github.event_name != 'pull_request_target'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/coderoot-revoked-cache
+        key: ${{ steps.run.outputs.revoked-cache-key }}
+
+    - name: Upload report
+      if: always() && steps.run.outputs.report != ''
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ steps.run.outputs.artifact-name }}
+        path: ${{ steps.run.outputs.report }}
+        if-no-files-found: ignore

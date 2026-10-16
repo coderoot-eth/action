@@ -1,0 +1,8 @@
+/node_modules/
+coderoot-report.json
+*.tgz
+
+# The vendored client is deliberately committed: the Action must run from a
+# reference with nothing to install.
+!vendor/**
+!test/fixtures/*.tgz

@@ -1,0 +1,45 @@
+# Tags a release and moves the floating v1 tag to it.
+#
+# Runs on every push to main; semantic-release (commit-analyzer +
+# github + semantic-release-major-tag) reads conventional-commit
+# prefixes since the last tag to decide whether there's a release and
+# what version it gets: feat bumps minor, fix bumps patch, a `!` or a
+# BREAKING CHANGE footer bumps major. A push with nothing to release
+# is a clean no-op, not a failure.
+#
+# These devDependencies are release tooling for this repo only - the
+# Action itself (action.yml, src/) ships with no dependencies and none
+# of this is installed in a consumer's pipeline.
+
+name: release
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Run the suite against this commit before releasing it
+        env:
+          CODEROOT_CLIENT: ${{ github.workspace }}/vendor/verify/build/bin/coderoot.js
+        run: node --test test/*.test.js
+
+      - name: Install release tooling
+        run: npm ci
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release

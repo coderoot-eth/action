@@ -1,0 +1,123 @@
+# The Action's own test suite, run on every push and pull request.
+#
+# The suite exercises the vendored client, so a green run here is evidence that
+# a consumer doing `uses: coderoot-eth/action@v1` gets a working Action.
+
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Run the suite against the vendored client
+        env:
+          CODEROOT_CLIENT: ${{ github.workspace }}/vendor/verify/build/bin/coderoot.js
+        run: node --test test/*.test.js
+
+  # Proves the Action works when consumed the way a customer consumes it, by
+  # reference rather than from a checkout of its own source.
+  self-use:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify an attested digest through the Action itself
+        id: verify
+        uses: ./
+        with:
+          mode: verify
+          hash: sha256:634e3ed585d7c8857f00cb7556f79422614e8defd008f8bb34b6018c1faefa0f
+
+      - name: The verdict must be `verified`
+        run: |
+          test "${{ steps.verify.outputs.verdict }}" = "verified" \
+            || { echo "::error::expected verified, got ${{ steps.verify.outputs.verdict }}"; exit 1; }
+
+      - name: Learn a revocation
+        id: learn
+        uses: ./
+        with:
+          mode: verify
+          hash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+          fail-on: never
+
+      - name: The verdict must be `revoked`
+        run: |
+          test "${{ steps.learn.outputs.verdict }}" = "revoked" \
+            || { echo "::error::expected revoked, got ${{ steps.learn.outputs.verdict }}"; exit 1; }
+
+  revoked-cache:
+    needs: self-use
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify the revoked fixture during an outage
+        id: outage
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: verify
+          hash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+          verify-endpoint: http://127.0.0.1:1
+
+      - name: The step must have failed as revoked
+        run: |
+          test "${{ steps.outage.outcome }}" = "failure" \
+            || { echo "::error::fail-open passed a digest seen revoked"; exit 1; }
+          test "${{ steps.outage.outputs.verdict }}" = "revoked" \
+            || { echo "::error::expected revoked, got ${{ steps.outage.outputs.verdict }}"; exit 1; }
+
+  registry-credential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # submit is the mode that reads an artifact and talks to the gate, so a
+      # token in scope there is the shape of a job that could publish.
+      - name: submit with NPM_TOKEN set
+        id: guarded
+        continue-on-error: true
+        uses: ./
+        env:
+          NPM_TOKEN: npm_placeholder_not_a_credential
+        with:
+          mode: submit
+          flow: published
+          submit-endpoint: http://127.0.0.1:1
+
+      - name: submit must have stopped
+        run: |
+          test "${{ steps.guarded.outcome }}" = "failure" \
+            || { echo "::error::submit ran with NPM_TOKEN in scope"; exit 1; }
+          test "${{ steps.guarded.outputs.exit-code }}" = "4" \
+            || { echo "::error::expected exit 4, got ${{ steps.guarded.outputs.exit-code }}"; exit 1; }
+
+      # check and verify only read digests, so a token is untidy rather than
+      # dangerous: stopping them would break a job that publishes in a later step.
+      - name: verify with NPM_TOKEN set
+        id: readonly
+        uses: ./
+        env:
+          NPM_TOKEN: npm_placeholder_not_a_credential
+        with:
+          mode: verify
+          hash: sha256:634e3ed585d7c8857f00cb7556f79422614e8defd008f8bb34b6018c1faefa0f
+
+      - name: verify must have carried on
+        run: |
+          test "${{ steps.readonly.outputs.verdict }}" = "verified" \
+            || { echo "::error::verify did not complete with a token in scope"; exit 1; }

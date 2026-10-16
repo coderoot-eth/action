@@ -1,0 +1,186 @@
+{
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.6",
+ "components": [
+  {
+   "type": "library",
+   "name": "core",
+   "group": "@babel",
+   "version": "7.29.7",
+   "bom-ref": "axios@1.20.0|@babel/core@7.29.7",
+   "author": "The Babel Team",
+   "description": "Babel compiler core.",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT",
+      "acknowledgement": "declared"
+     }
+    }
+   ],
+   "purl": "pkg:npm/%40babel/core@7.29.7",
+   "externalReferences": [
+    {
+     "url": "git+https://github.com/babel/babel.git#packages/babel-core",
+     "type": "vcs",
+     "comment": "as detected from PackageJson property \"repository.url\" and \"repository.directory\""
+    },
+    {
+     "url": "https://babel.dev/docs/en/next/babel-core",
+     "type": "website",
+     "comment": "as detected from PackageJson property \"homepage\""
+    },
+    {
+     "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20core%22+is%3Aopen",
+     "type": "issue-tracker",
+     "comment": "as detected from PackageJson property \"bugs.url\""
+    },
+    {
+     "url": "https://registry.npmjs.org/@babel/core/-/core-7.29.7.tgz",
+     "type": "distribution",
+     "hashes": [
+      {
+       "alg": "SHA-512",
+       "content": "4601c10afb636ce2b681748d04d22436811cf6aa1512d6aede18fc804a8a42e2f71d90226ca6ab585108dcb7e6e8460a90b6a53a1f1e4ab8fd6fe721f47fd504"
+      }
+     ],
+     "comment": "as detected from npm-ls property \"resolved\" and property \"integrity\""
+    }
+   ],
+   "properties": [
+    {
+     "name": "cdx:npm:package:constraint:engine:node",
+     "value": ">=6.9.0"
+    },
+    {
+     "name": "cdx:npm:package:development",
+     "value": "true"
+    },
+    {
+     "name": "cdx:npm:package:path",
+     "value": "node_modules/@babel/core"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "preset-env",
+   "group": "@babel",
+   "version": "7.29.7",
+   "bom-ref": "axios@1.20.0|@babel/preset-env@7.29.7",
+   "author": "The Babel Team",
+   "description": "A Babel preset for each environment.",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT",
+      "acknowledgement": "declared"
+     }
+    }
+   ],
+   "purl": "pkg:npm/%40babel/preset-env@7.29.7",
+   "externalReferences": [
+    {
+     "url": "git+https://github.com/babel/babel.git#packages/babel-preset-env",
+     "type": "vcs",
+     "comment": "as detected from PackageJson property \"repository.url\" and \"repository.directory\""
+    },
+    {
+     "url": "https://babel.dev/docs/en/next/babel-preset-env",
+     "type": "website",
+     "comment": "as detected from PackageJson property \"homepage\""
+    },
+    {
+     "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20preset-env%22+is%3Aopen",
+     "type": "issue-tracker",
+     "comment": "as detected from PackageJson property \"bugs.url\""
+    },
+    {
+     "url": "https://registry.npmjs.org/@babel/preset-env/-/preset-env-7.29.7.tgz",
+     "type": "distribution",
+     "hashes": [
+      {
+       "alg": "SHA-512",
+       "content": "198cd7dfa9f59ec72221bd2ec87d061f0c70b4dc0f408729c527a254b0ed1bf07b8c1e715e07219e62f57ff8c25f9a3ea709da0c1b4eeb438d4898440497f160"
+      }
+     ],
+     "comment": "as detected from npm-ls property \"resolved\" and property \"integrity\""
+    }
+   ],
+   "properties": [
+    {
+     "name": "cdx:npm:package:constraint:engine:node",
+     "value": ">=6.9.0"
+    },
+    {
+     "name": "cdx:npm:package:development",
+     "value": "true"
+    },
+    {
+     "name": "cdx:npm:package:path",
+     "value": "node_modules/@babel/preset-env"
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "cli",
+   "group": "@commitlint",
+   "version": "21.2.2",
+   "bom-ref": "axios@1.20.0|@commitlint/cli@21.2.2",
+   "author": "Mario Nebl",
+   "description": "Lint your commit messages",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT",
+      "acknowledgement": "declared"
+     }
+    }
+   ],
+   "purl": "pkg:npm/%40commitlint/cli@21.2.2",
+   "externalReferences": [
+    {
+     "url": "git+https://github.com/conventional-changelog/commitlint.git#@commitlint/cli",
+     "type": "vcs",
+     "comment": "as detected from PackageJson property \"repository.url\" and \"repository.directory\""
+    },
+    {
+     "url": "https://commitlint.js.org/",
+     "type": "website",
+     "comment": "as detected from PackageJson property \"homepage\""
+    },
+    {
+     "url": "https://github.com/conventional-changelog/commitlint/issues",
+     "type": "issue-tracker",
+     "comment": "as detected from PackageJson property \"bugs.url\""
+    },
+    {
+     "url": "https://registry.npmjs.org/@commitlint/cli/-/cli-21.2.2.tgz",
+     "type": "distribution",
+     "hashes": [
+      {
+       "alg": "SHA-512",
+       "content": "6beea14312319e976f4af4b66a9bedb4f35b125898b150b73ea1580e2881da48dbc08b10b23d6eaef4384e47fbd29298a333da94a02e4509a6fc61f09dd76ea8"
+      }
+     ],
+     "comment": "as detected from npm-ls property \"resolved\" and property \"integrity\""
+    }
+   ],
+   "properties": [
+    {
+     "name": "cdx:npm:package:constraint:engine:node",
+     "value": ">=22.12.0"
+    },
+    {
+     "name": "cdx:npm:package:development",
+     "value": "true"
+    },
+    {
+     "name": "cdx:npm:package:path",
+     "value": "node_modules/@commitlint/cli"
+    }
+   ]
+  }
+ ]
+}
