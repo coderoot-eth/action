@@ -11,6 +11,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Major versions change APIs and toolchains; they are upgraded by hand.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: development
