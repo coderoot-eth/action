@@ -4,7 +4,7 @@
  * is the trust: nothing here reports `verified` from a name and version alone.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.realPlatforms = exports.crossCheckAgainstCrane = exports.resolveImageDigest = exports.defaultCachePath = exports.RevokedCache = exports.toEvidenceRecord = exports.renderSummary = exports.exitCodeFor = exports.summarize = exports.buildReport = exports.EXIT = exports.strongestDeclared = exports.distinctByPurl = exports.parseLockfileFile = exports.parseLockfile = exports.parseSbomFile = exports.parseSbom = exports.assertQueryable = exports.compareContentHash = exports.probeCoordinates = exports.verifyDigest = exports.taggedPair = exports.tagged = exports.parseIntegrity = exports.parseDigest = exports.digestFile = exports.digestBuffer = void 0;
+exports.packageVersion = exports.verifyComponents = exports.verifyComponentDetailed = exports.verifyComponent = exports.realPlatforms = exports.crossCheckAgainstCrane = exports.resolveImageDigest = exports.defaultCachePath = exports.RevokedCache = exports.toEvidenceRecord = exports.renderSummary = exports.exitCodeFor = exports.summarize = exports.buildReport = exports.EXIT = exports.strongestDeclared = exports.distinctByPurl = exports.parseLockfileFile = exports.parseLockfile = exports.parseSbomFile = exports.parseSbom = exports.assertQueryable = exports.compareContentHash = exports.probeCoordinates = exports.verifyDigest = exports.taggedPair = exports.tagged = exports.parseIntegrity = exports.parseDigest = exports.digestFile = exports.digestBuffer = void 0;
 var digest_1 = require("./digest");
 Object.defineProperty(exports, "digestBuffer", { enumerable: true, get: function () { return digest_1.digestBuffer; } });
 Object.defineProperty(exports, "digestFile", { enumerable: true, get: function () { return digest_1.digestFile; } });
@@ -38,4 +38,10 @@ var image_1 = require("./image");
 Object.defineProperty(exports, "resolveImageDigest", { enumerable: true, get: function () { return image_1.resolveImageDigest; } });
 Object.defineProperty(exports, "crossCheckAgainstCrane", { enumerable: true, get: function () { return image_1.crossCheckAgainstCrane; } });
 Object.defineProperty(exports, "realPlatforms", { enumerable: true, get: function () { return image_1.realPlatforms; } });
+var batch_1 = require("./batch");
+Object.defineProperty(exports, "verifyComponent", { enumerable: true, get: function () { return batch_1.verifyComponent; } });
+Object.defineProperty(exports, "verifyComponentDetailed", { enumerable: true, get: function () { return batch_1.verifyComponentDetailed; } });
+Object.defineProperty(exports, "verifyComponents", { enumerable: true, get: function () { return batch_1.verifyComponents; } });
+var version_1 = require("./version");
+Object.defineProperty(exports, "packageVersion", { enumerable: true, get: function () { return version_1.packageVersion; } });
 //# sourceMappingURL=index.js.map

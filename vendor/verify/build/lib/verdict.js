@@ -146,23 +146,27 @@ async function verifyDigest(digests, hashSource, options = {}) {
     // Prefer sha256: it reaches v1 records that predate sha512 as a lookup
     // key. sha512 is sent directly when that's the only digest held.
     const queried = digests.sha256 ? `sha256:${digests.sha256}` : `sha512:${digests.sha512}`;
-    if (options.revokedCache?.has(queried)) {
-        return {
+    // Verify is always asked first. The local revoked cache answers only when
+    // verify cannot be read, so an outage cannot pass a digest seen revoked.
+    const fromCache = (why) => options.revokedCache?.has(queried)
+        ? {
             verdict: 'revoked',
             queried,
             hashSource,
-            reason: 'This digest was previously observed as revoked by this client (local cache).',
+            reason: `Verify could not be read (${why}); this digest was previously observed as revoked by this client (local cache).`,
             authorCpoaRevoked: false,
-        };
-    }
+        }
+        : null;
     let response;
     try {
         response = await getJson(`${baseUrl}/verify/${encodeURIComponent(queried)}`, timeoutMs);
     }
     catch (error) {
-        // A hash already known revoked was answered from the cache above. Anything
-        // else is degraded: whether that fails or warns is the caller's call
-        // (release jobs fail, other jobs warn).
+        const cached = fromCache(error.message);
+        if (cached)
+            return cached;
+        // Anything else is degraded: whether that fails or warns is the caller's
+        // call (release jobs fail, other jobs warn).
         return {
             verdict: 'attested-bytes-unproven',
             queried,
@@ -174,6 +178,9 @@ async function verifyDigest(digests, hashSource, options = {}) {
         };
     }
     if (!response.ok) {
+        const cached = fromCache(`HTTP ${response.status}`);
+        if (cached)
+            return cached;
         return {
             verdict: 'attested-bytes-unproven',
             queried,
@@ -219,10 +226,21 @@ async function verifyDigest(digests, hashSource, options = {}) {
  * the same UID. A UID that appears in neither array is still reported.
  */
 function extractAttestations(body) {
+    const seconds = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
     const detail = new Map();
-    for (const a of [...(body.attestations ?? []), ...(body.v1Attestations ?? [])]) {
+    for (const a of [...(body.attestations ?? []), ...(body.v1Attestations ?? []), ...(body.v2Attestations ?? [])]) {
         if (typeof a?.id === 'string' && a.id.length > 0 && !detail.has(a.id)) {
-            detail.set(a.id, { attester: a.attester, revokedOnChain: a.revokedOnChain });
+            const entry = { attester: a.attester, revokedOnChain: a.revokedOnChain };
+            const attestedAt = seconds(a.blockTimestamp);
+            const revokedAt = seconds(a.revokedAt);
+            if (attestedAt !== undefined)
+                entry.attestedAt = attestedAt;
+            if (revokedAt !== undefined)
+                entry.revokedAt = revokedAt;
+            detail.set(a.id, entry);
         }
     }
     const uids = (body.attestationUids ?? []).filter((u) => typeof u === 'string' && u.length > 0);

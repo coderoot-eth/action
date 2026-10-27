@@ -36,6 +36,10 @@ export interface AttestationRef {
     uid: string;
     attester?: string | undefined;
     revokedOnChain?: boolean | undefined;
+    /** When the attestation was made on chain, Unix seconds. */
+    attestedAt?: number | undefined;
+    /** When it was revoked on chain, Unix seconds; absent while it stands. */
+    revokedAt?: number | undefined;
 }
 export interface VerdictResult {
     verdict: Verdict;
