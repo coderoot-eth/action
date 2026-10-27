@@ -529,16 +529,22 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * names the repository, workflow and run that submit, which a stored token
  * cannot, and the job holds no secret.
  */
-async function gateCredential(flow) {
+function requireIdentityToken(flow) {
   const url = process.env['ACTIONS_ID_TOKEN_REQUEST_URL'];
   const requestToken = process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'];
-  const audience = input('OIDC_AUDIENCE', 'secure.coderoot.app');
   if (!url || !requestToken) {
     fail(
       `flow \`${flow}\` signs in with the job's GitHub identity token, and this job cannot mint one. ` +
         'Give the job `permissions: id-token: write`.'
     );
   }
+  return { url, requestToken };
+}
+
+/** Minted right before the first gate request: the token is short-lived and npm can take minutes. */
+async function gateCredential(flow) {
+  const { url, requestToken } = requireIdentityToken(flow);
+  const audience = input('OIDC_AUDIENCE', 'secure.coderoot.app');
   let res;
   try {
     res = await request(`${url}&audience=${encodeURIComponent(audience)}`, {
@@ -755,7 +761,7 @@ function buildSource() {
 
 async function modeSubmit() {
   const { flow, stageId } = readFlow();
-  const token = await gateCredential(flow);
+  requireIdentityToken(flow);
   const artifact = input('ARTIFACT');
   if (!artifact) {
     // A fresh pack after a publish is not guaranteed to reproduce the published bytes.
@@ -795,6 +801,7 @@ async function modeSubmit() {
 
   const endpoint = input('SUBMIT_ENDPOINT', 'https://secure.coderoot.app').replace(/\/+$/, '');
   const bytes = fs.readFileSync(artifact);
+  const token = await gateCredential(flow);
 
   // --- step 1: upload the bytes. The receipt carries the gate's own digests,
   // and the submission must declare hashes equal to them.
