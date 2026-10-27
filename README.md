@@ -126,7 +126,9 @@ submit:
 
 - `flow: published`: the version is live. `submit` reads npm's `dist.integrity` for it, waiting up
   to `registry-wait` seconds for a new version to appear, and stops with exit 2 before contacting
-  the gate if the artifact is not those bytes.
+  the gate if the artifact is not those bytes. Within the same wait it also waits for npm to serve
+  the version's provenance, which can appear after the version does; without it, `submit` warns
+  and submits, and the gate decides.
 - `flow: staged`: the version was staged with `npm stage publish` and is not installable yet. npm
   serves nothing about it before approval, so the proof is the provenance bundle npm attached:
   create it in an earlier step, stage with `npm stage publish --provenance-file <bundle>`, and pass
@@ -153,7 +155,7 @@ identity token names is the one npm's provenance names.
 | `npm-output` | submit | — | flow `staged`: a file holding the output of `npm stage publish` |
 | `provenance-bundle` | submit | — | flow `staged`: the Sigstore bundle npm attached, staged with `--provenance-file` |
 | `registry` | submit | `https://registry.npmjs.org` | flow `published`: where `dist.integrity` is read |
-| `registry-wait` | submit | `300` | flow `published`: seconds to wait for a new version to appear |
+| `registry-wait` | submit | `300` | flow `published`: seconds to wait for a new version and its provenance to appear |
 | `oidc-audience` | submit | `secure.coderoot.app` | audience of the identity token used to sign in |
 | `evidence` | submit | — | JSON array, passed through verbatim |
 | `signatures` | submit | — | JSON array of signature references |

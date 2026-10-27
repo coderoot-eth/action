@@ -529,16 +529,22 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * names the repository, workflow and run that submit, which a stored token
  * cannot, and the job holds no secret.
  */
-async function gateCredential(flow) {
+function requireIdentityToken(flow) {
   const url = process.env['ACTIONS_ID_TOKEN_REQUEST_URL'];
   const requestToken = process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'];
-  const audience = input('OIDC_AUDIENCE', 'secure.coderoot.app');
   if (!url || !requestToken) {
     fail(
       `flow \`${flow}\` signs in with the job's GitHub identity token, and this job cannot mint one. ` +
         'Give the job `permissions: id-token: write`.'
     );
   }
+  return { url, requestToken };
+}
+
+/** Minted right before the first gate request: the token is short-lived and npm can take minutes. */
+async function gateCredential(flow) {
+  const { url, requestToken } = requireIdentityToken(flow);
+  const audience = input('OIDC_AUDIENCE', 'secure.coderoot.app');
   let res;
   try {
     res = await request(`${url}&audience=${encodeURIComponent(audience)}`, {
@@ -575,17 +581,20 @@ function readFlow() {
   return { flow, stageId };
 }
 
+function registrySettings() {
+  const registry = input('REGISTRY', 'https://registry.npmjs.org').replace(/\/+$/, '');
+  const waitMs = Number(input('REGISTRY_WAIT', '300')) * 1000;
+  const pollMs = Number(input('REGISTRY_POLL_MS', '10000'));
+  return { registry, waitMs, pollMs, deadline: Date.now() + waitMs };
+}
+
 /**
  * npm's `dist.integrity` for a published version. A new version can take a
  * minute or more to become visible, so a 404 is retried until `registry-wait`
  * runs out rather than failing on the first read.
  */
-async function registryIntegrity(name, version) {
-  const registry = input('REGISTRY', 'https://registry.npmjs.org').replace(/\/+$/, '');
+async function registryIntegrity(name, version, { registry, waitMs, pollMs, deadline }) {
   const url = `${registry}/${name.replace('/', '%2f')}/${encodeURIComponent(version)}`;
-  const waitMs = Number(input('REGISTRY_WAIT', '300')) * 1000;
-  const pollMs = Number(input('REGISTRY_POLL_MS', '10000'));
-  const deadline = Date.now() + waitMs;
   let last = '';
   for (;;) {
     try {
@@ -608,6 +617,37 @@ async function registryIntegrity(name, version) {
     `${name}@${version} is not visible on npm after ${waitMs / 1000}s (last read: ${last}). ` +
       'Raise `registry-wait` if the registry is slow, or check that the publish succeeded.'
   );
+}
+
+const SLSA_PROVENANCE = /^https:\/\/slsa\.dev\/provenance\//;
+
+/**
+ * Whether npm serves a SLSA provenance statement for a published version. The
+ * record can appear after the version does, and the gate reads it on submit, so
+ * it is polled within the same `registry-wait`. A version published without
+ * `--provenance` never gets one: the job warns and submits, and the gate decides.
+ */
+async function registryProvenance(name, version, { registry, pollMs, deadline }) {
+  const url = `${registry}/-/npm/v1/attestations/${name.replace('/', '%2f')}@${encodeURIComponent(version)}`;
+  let last = '';
+  for (;;) {
+    try {
+      const res = await request(url, { headers: { Accept: 'application/json' } });
+      if (res.status === 200 && (res.body?.attestations || []).some((a) => SLSA_PROVENANCE.test(a?.predicateType || ''))) {
+        return true;
+      }
+      last = res.status === 200 ? 'no provenance statement yet' : `HTTP ${res.status}`;
+    } catch (error) {
+      last = error.message;
+    }
+    if (Date.now() + pollMs > deadline) break;
+    await sleep(pollMs);
+  }
+  console.error(
+    `::warning::npm shows no provenance for ${name}@${version} within \`registry-wait\` (last read: ${last}). ` +
+      'Submitting anyway; the gate refuses it if it requires provenance. Raise `registry-wait` if npm is slow.'
+  );
+  return false;
 }
 
 function hexToIntegrity(hash) {
@@ -721,7 +761,7 @@ function buildSource() {
 
 async function modeSubmit() {
   const { flow, stageId } = readFlow();
-  const token = await gateCredential(flow);
+  requireIdentityToken(flow);
   const artifact = input('ARTIFACT');
   if (!artifact) {
     // A fresh pack after a publish is not guaranteed to reproduce the published bytes.
@@ -745,7 +785,8 @@ async function modeSubmit() {
   // A published release must be the bytes npm serves; refuse locally before the gate sees it.
   let registryCheck = null;
   if (flow === 'published') {
-    registryCheck = await registryIntegrity(name, version);
+    const settings = registrySettings();
+    registryCheck = await registryIntegrity(name, version, settings);
     const local = hexToIntegrity(hashes[1]);
     if (registryCheck.integrity !== local) {
       refuse(
@@ -755,10 +796,12 @@ async function modeSubmit() {
         EXIT.MISMATCH
       );
     }
+    await registryProvenance(name, version, settings);
   }
 
   const endpoint = input('SUBMIT_ENDPOINT', 'https://secure.coderoot.app').replace(/\/+$/, '');
   const bytes = fs.readFileSync(artifact);
+  const token = await gateCredential(flow);
 
   // --- step 1: upload the bytes. The receipt carries the gate's own digests,
   // and the submission must declare hashes equal to them.

@@ -3,8 +3,10 @@
 // Stands in for two services the submit flows talk to:
 //   GET /oidc?...&audience=<aud>   GitHub's identity-token endpoint
 //   GET /registry/<name>/<version> npm's version document
+//   GET /registry/-/npm/v1/attestations/<name>@<version>  npm's attestations
 // The config file is read per request, so a test can change it between runs:
-//   { requestToken, oidcStatus?, versions: { "<name>@<version>": { integrity, visibleAfterMs? } } }
+//   { requestToken, oidcStatus?,
+//     versions: { "<name>@<version>": { integrity, visibleAfterMs?, provenance? = true, provenanceAfterMs? } } }
 
 import fs from 'node:fs';
 import http from 'node:http';
@@ -36,6 +38,20 @@ const server = http.createServer((req, res) => {
       workflow_ref: 'VitroTech/coderoot-gate-spike/.github/workflows/env-publish.yml@refs/heads/main',
     };
     return send(200, { value: `${enc({ alg: 'RS256', typ: 'JWT' })}.${enc(claims)}.c2ln` });
+  }
+
+  const a = /^\/registry\/-\/npm\/v1\/attestations\/(.+)$/.exec(url.pathname);
+  if (a) {
+    const key = decodeURIComponent(a[1]);
+    const entry = config.versions?.[key];
+    if (!entry || entry.provenance === false || !firstSeen.has(key)) return send(404, { error: 'not found' });
+    if (Date.now() - firstSeen.get(key) < (entry.provenanceAfterMs || 0)) return send(404, { error: 'not found' });
+    return send(200, {
+      attestations: [
+        { predicateType: 'https://github.com/npm/attestation/tree/main/specs/publish/v0.1' },
+        { predicateType: 'https://slsa.dev/provenance/v1' },
+      ],
+    });
   }
 
   const m = /^\/registry\/(.+)\/([^/]+)$/.exec(url.pathname);

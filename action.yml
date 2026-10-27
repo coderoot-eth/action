@@ -59,7 +59,7 @@ inputs:
     required: false
     default: "https://registry.npmjs.org"
   registry-wait:
-    description: "submit, flow published: seconds to wait for a new version to become visible on the registry."
+    description: "submit, flow published: seconds to wait for a new version and its provenance to become visible on the registry."
     required: false
     default: "300"
   oidc-audience:
