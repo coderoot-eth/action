@@ -14,3 +14,6 @@ export { RevokedCache, defaultCachePath } from './revoked-cache';
 export type { RevokedEntry } from './revoked-cache';
 export { resolveImageDigest, crossCheckAgainstCrane, realPlatforms } from './image';
 export type { ResolvedImageDigest, ManifestPlatform } from './image';
+export { verifyComponent, verifyComponentDetailed, verifyComponents } from './batch';
+export type { BatchOptions } from './batch';
+export { packageVersion } from './version';

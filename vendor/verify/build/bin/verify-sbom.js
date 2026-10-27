@@ -64,11 +64,10 @@ exports.runVerifySbom = runVerifySbom;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const sbom_1 = require("../lib/sbom");
-const verdict_1 = require("../lib/verdict");
-const digest_1 = require("../lib/digest");
 const report_1 = require("../lib/report");
 const revoked_cache_1 = require("../lib/revoked-cache");
-const TOOL_VERSION = '0.1.0-m2';
+const batch_1 = require("../lib/batch");
+const version_1 = require("../lib/version");
 function parseArgs(argv) {
     const args = { concurrency: 8, offline: false, cache: true };
     for (let i = 0; i < argv.length; i += 1) {
@@ -97,61 +96,6 @@ function parseArgs(argv) {
         }
     }
     return args;
-}
-/** Run `fn` over items with a fixed number of workers, preserving order. */
-async function pool(items, workers, fn) {
-    const out = new Array(items.length);
-    let cursor = 0;
-    await Promise.all(Array.from({ length: Math.max(1, workers) }, async () => {
-        while (cursor < items.length) {
-            const index = cursor++;
-            out[index] = await fn(items[index]);
-        }
-    }));
-    return out;
-}
-/** A declared digest, shaped for the result - sha256 only goes in the queryable field. */
-function fromDeclared(declared, hashSource) {
-    if (!declared)
-        return { hashSource: 'none', digests: [], declared: null };
-    const digests = [`${declared.algorithm}:${declared.hex}`];
-    if (declared.algorithm === 'sha256')
-        return { hashSource, sha256: declared.hex, digests, declared };
-    if (declared.algorithm === 'sha512')
-        return { hashSource, sha512: declared.hex, digests, declared };
-    return { hashSource, digests, declared };
-}
-async function acquire(component, offline, declaredSource = 'sbom-hint') {
-    const declared = (0, sbom_1.strongestDeclared)(component);
-    if (offline || component.ecosystem !== 'npm' || !component.version) {
-        // Nothing obtainable without the network, or an ecosystem this build
-        // does not resolve. `lockfile` vs `sbom-hint` still matters for the
-        // report: the former is a trustworthy source, the latter is a hint
-        // only.
-        return fromDeclared(declared, declaredSource);
-    }
-    try {
-        const packument = (await (await fetch(`https://registry.npmjs.org/${component.name}`)).json());
-        const tarball = packument.versions?.[component.version]?.dist?.tarball;
-        if (!tarball)
-            return fromDeclared(declared, declaredSource);
-        const bytes = new Uint8Array(await (await fetch(tarball)).arrayBuffer());
-        const set = (0, digest_1.digestBuffer)(bytes);
-        // We hold the artifact and hashed it ourselves: that is the `bytes` tier,
-        // and the only way to have both algorithms for the same artifact. `declared`
-        // still carries the document's own hash (if any), for the caller to compare
-        // against these bytes - see the Acquired interface doc.
-        return {
-            hashSource: 'bytes',
-            sha256: set.sha256,
-            sha512: set.sha512,
-            digests: [`sha256:${set.sha256}`, `sha512:${set.sha512}`],
-            declared,
-        };
-    }
-    catch {
-        return fromDeclared(declared, declaredSource);
-    }
 }
 /** Run the batch verification. Returns the exit code; never exits. */
 async function runVerifySbom(argv) {
@@ -189,49 +133,15 @@ async function runVerifySbom(argv) {
         ...(args.baseUrl ? { baseUrl: args.baseUrl } : {}),
         ...(cache ? { revokedCache: cache.asSet() } : {}),
     };
-    let done = 0;
-    const records = await pool(components, args.concurrency, async (component) => {
-        const acquired = await acquire(component, args.offline, declaredSource);
-        // --offline means resolve and classify, never call the network. Checked
-        // explicitly here rather than relying on verifyDigest to decline a query
-        // on its own.
-        const outcome = args.offline
-            ? {
-                verdict: 'attested-bytes-unproven',
-                queried: null,
-                hashSource: acquired.hashSource,
-                reason: 'Offline: resolved and classified, but not queried.',
-            }
-            : await (0, verdict_1.verifyDigest)(acquired.sha256 || acquired.sha512
-                ? { sha256: acquired.sha256 ?? '', sha512: acquired.sha512 ?? '', bytes: 0 }
-                : null, acquired.hashSource, verifyOptions);
-        // Two mismatch checks, both only possible once bytes were fetched.
-        let mismatch = false;
-        if (acquired.sha256 && acquired.hashSource === 'bytes' && component.ecosystem === 'npm' && component.version) {
-            // Against the coordinate route's contentHash (the hash route never returns one).
-            const coordinates = await (0, verdict_1.probeCoordinates)(component.ecosystem, component.name ?? '', component.version, verifyOptions);
-            mismatch = (0, verdict_1.compareContentHash)(acquired.sha256, coordinates.contentHash);
-            // Against the lockfile's own declared integrity, when there is one.
-            if (!mismatch && declaredSource === 'lockfile' && acquired.declared) {
-                const ours = acquired.declared.algorithm === 'sha512' ? acquired.sha512 : acquired.sha256;
-                if (ours)
-                    mismatch = (0, verdict_1.compareContentHash)(ours, acquired.declared.hex);
-            }
-        }
-        if (++done % 25 === 0)
-            process.stderr.write(`  ${done}/${components.length}\n`);
-        return (0, report_1.toEvidenceRecord)(component, {
-            verdict: outcome.verdict,
-            hashSource: outcome.hashSource,
-            queried: outcome.queried,
-            reason: outcome.reason,
-            degraded: outcome.degraded,
-            mismatch,
-            attestations: outcome.totalAttestations,
-            attestationUids: outcome.attestations?.map((a) => a.uid),
-            authorCpoaRevoked: outcome.authorCpoaRevoked,
-            authorCpoaRevokedUids: outcome.authorCpoaRevokedUids,
-        }, acquired.digests);
+    const records = await (0, batch_1.verifyComponents)(components, {
+        declaredSource,
+        offline: args.offline,
+        concurrency: args.concurrency,
+        verify: verifyOptions,
+        onProgress: (done, total) => {
+            if (done % 25 === 0)
+                process.stderr.write(`  ${done}/${total}\n`);
+        },
     });
     cache?.flush();
     const report = (0, report_1.buildReport)({
@@ -241,7 +151,7 @@ async function runVerifySbom(argv) {
         distinct,
         startedAt,
         records,
-        toolVersion: TOOL_VERSION,
+        toolVersion: (0, version_1.packageVersion)(),
     });
     const json = JSON.stringify(report, null, 2);
     if (args.json) {

@@ -1,5 +1,5 @@
 @coderoot-eth/verify 0.1.0
-integrity sha512-Li6j2EALEkQ+ZcrhVx7ccH09XcJfF4/SnWqzySmdE7qrS5HP41u0CzRoagwmYqNAjzAM8XSikpIJ4KUuzMrnWQ==
+integrity sha512-xb7VAVoNIh3+DQjMG1NvXlYjFTldztOwkvctRS87VE1ki8DNeZYrC2VobEjkpuoAYND+td/LqkaB0PGeaZdKww==
 
 build/ is the package's own build without source maps; node_modules/ holds its one
 runtime dependency, @noble/hashes, reduced to .js, LICENSE, README and package.json.
