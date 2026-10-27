@@ -143,6 +143,33 @@ test('flow published: a version npm never shows fails after registry-wait, exit 
   assert.equal(mock.submits().length, 0);
 });
 
+test('flow published: waits for npm\'s provenance record before submitting', async (t) => {
+  const art = artifact('1.0.7');
+  const { mock, fakes } = withServers(t, { versions: { [`${NAME}@1.0.7`]: { integrity: art.integrity, provenanceAfterMs: 400 } } });
+
+  const run = runAction(env(mock, fakes, { CR_FLOW: 'published', CR_ARTIFACT: art.file, CR_NAME: NAME, CR_VERSION: '1.0.7' }), art.dir);
+  assert.equal(run.code, 0, run.stderr);
+
+  const reads = fakes.seen().filter((r) => r.path.startsWith('/registry/-/npm/v1/attestations/'));
+  assert.ok(reads.length >= 2, 'a missing provenance record is retried');
+  assert.equal(reads[0].path, `/registry/-/npm/v1/attestations/${NAME.replace('/', '%2f')}@1.0.7`);
+  assert.equal(mock.submits().at(-1).status, 201);
+  assert.doesNotMatch(run.stderr, /no provenance/);
+});
+
+test('flow published: no provenance within registry-wait warns and still submits', async (t) => {
+  const art = artifact('1.0.8');
+  const { mock, fakes } = withServers(t, { versions: { [`${NAME}@1.0.8`]: { integrity: art.integrity, provenance: false } } });
+
+  const run = runAction(
+    env(mock, fakes, { CR_FLOW: 'published', CR_ARTIFACT: art.file, CR_NAME: NAME, CR_VERSION: '1.0.8', CR_REGISTRY_WAIT: '1' }),
+    art.dir
+  );
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stderr, /::warning::npm shows no provenance for .*@1\.0\.8/);
+  assert.equal(mock.submits().at(-1).status, 201);
+});
+
 test('flow staged: uploads the tarball and its provenance bundle, and names the bundle by hash', async (t) => {
   const art = artifact('0.0.3', TARBALL);
   const { mock, fakes } = withServers(t);
