@@ -1,6 +1,6 @@
 {
   "name": "@coderoot-eth/verify",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Verify that the dependencies and artifacts you use are the bytes their publisher released, against CodeRoot's public attestations. The hash is the trust; a name and version alone never verify.",
   "license": "Apache-2.0",
   "repository": {
