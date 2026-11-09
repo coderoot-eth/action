@@ -76,7 +76,8 @@ offline. The request body is in the exact form
 two-space indent, no trailing newline). The `Idempotency-Key` is a UUIDv4 derived
 from that body, so a retry of the same body is an idempotent replay. The job is done at that
 point: it does not wait for a decision and it does not publish. The job summary carries the
-submission id and its review link.
+submission id and an "Approve in CodeRoot" link to that submission's page in the review queue,
+where a reviewer approves it with a passkey.
 
 Submission requests retry recognized connection failures and HTTP 429, 500, 502, 503 and 504,
 up to three attempts within a shared 30-second deadline. Delays use exponential backoff with

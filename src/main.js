@@ -522,6 +522,16 @@ function idempotencyKeyFor(payload) {
 const FLOWS = ['published', 'staged'];
 const STAGE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** One submission's page in the review queue. The reviewer's sign-in scopes it, so no org id. */
+const REVIEW_DETAIL_URL = 'https://coderoot.app/review/detail/';
+
+/** The gate's own link when it sends one, otherwise the queue page for this submission. */
+function reviewUrlFor(result) {
+  if (result.review_url) return result.review_url;
+  if (!result.submission_id) return '';
+  return `${REVIEW_DETAIL_URL}?id=${encodeURIComponent(result.submission_id)}`;
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -876,6 +886,8 @@ async function modeSubmit() {
 
   const result = submitted.body || {};
   fs.writeFileSync(reportPath, JSON.stringify({ request: body, response: result }, null, 2));
+  const reviewUrl = reviewUrlFor(result);
+  const reviewAction = !result.state || result.state === 'pending_review' ? 'Approve in CodeRoot' : 'Open in CodeRoot';
 
   summary(
     `## CodeRoot submit\n\n` +
@@ -887,12 +899,11 @@ async function modeSubmit() {
       (flow ? `| flow | ${flow}${stageId ? ` (stage \`${stageId}\`)` : ''} |\n` : '') +
       '| signed in with | GitHub identity token |\n' +
       (provenance ? `| provenance | \`${provenance.sha256}\` |\n` : '') +
-      (result.review_url ? `| review | ${result.review_url} |\n` : '') +
       (result.idempotent_replay ? `| replay | this build was already submitted |\n` : '') +
       `\n` +
       body.hashes.map((h) => `- \`${h}\``).join('\n') +
       `\n\n` +
-      (result.review_url ? `**Queue:** ${result.review_url}\n\n` : '') +
+      (reviewUrl ? `**[${reviewAction} → ${result.submission_id || 'submission'}](${reviewUrl})**\n\n` : '') +
       (flow === 'published'
         ? `> Already live on npm; the artifact matches npm's \`dist.integrity\`. Attest it in CodeRoot.\n`
         : flow === 'staged'
@@ -902,7 +913,7 @@ async function modeSubmit() {
   );
 
   setOutput('submission-id', result.submission_id || '');
-  setOutput('review-url', result.review_url || '');
+  setOutput('review-url', reviewUrl);
   setOutput('flow', flow || '');
   setOutput('exit-code', EXIT.CLEAN);
   return EXIT.CLEAN;

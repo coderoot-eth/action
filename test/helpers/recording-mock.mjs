@@ -1,11 +1,11 @@
-// Usage: node recording-mock.mjs <port-file> <log-file>
+// Usage: node recording-mock.mjs <port-file> <log-file> [gate-options-json]
 
 import fs from 'node:fs';
 import http from 'node:http';
 import { createGate } from './gate-fake.mjs';
 
-const [portFile, logFile] = process.argv.slice(2);
-const mock = createGate();
+const [portFile, logFile, options] = process.argv.slice(2);
+const mock = createGate(options ? JSON.parse(options) : {});
 const upstream = new URL(await mock.listen(0, '127.0.0.1'));
 
 const proxy = http.createServer((req, res) => {

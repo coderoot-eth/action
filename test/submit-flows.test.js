@@ -21,11 +21,15 @@ const REQUEST_TOKEN = 'request-token-for-tests';
 const TARBALL = path.join(__dirname, 'fixtures', 'vitrotech-gate-spike-b-0.0.3.tgz');
 const BUNDLE = path.join(__dirname, 'fixtures', 'gate-spike-b-0.0.3.provenance.sigstore.json');
 
-function startRecordingMock() {
+function startRecordingMock(gateOptions) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-mock-'));
   const portFile = path.join(dir, 'port');
   const log = path.join(dir, 'seen.jsonl');
-  const server = startServer(path.join(__dirname, 'helpers', 'recording-mock.mjs'), [portFile, log], portFile);
+  const server = startServer(
+    path.join(__dirname, 'helpers', 'recording-mock.mjs'),
+    gateOptions ? [portFile, log, JSON.stringify(gateOptions)] : [portFile, log],
+    portFile
+  );
   const seen = (url) =>
     (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '')
       .split('\n')
@@ -83,8 +87,8 @@ function stagedEnv(art, extra = {}) {
 
 const lastBody = (mock) => JSON.parse(Buffer.from(mock.submits().at(-1).body, 'base64').toString('utf8'));
 
-function withServers(t, config = {}) {
-  const mock = startRecordingMock();
+function withServers(t, config = {}, gateOptions) {
+  const mock = startRecordingMock(gateOptions);
   const fakes = startFakes(config);
   t.after(() => {
     mock.stop();
@@ -113,10 +117,28 @@ test('flow published: waits for npm, matches dist.integrity, signs in with the i
   assert.equal('provenance' in body, false);
   assert.deepEqual(Object.keys(body).slice(2, 4), ['coordinates', 'flow']);
 
-  assert.match(run.outputs['review-url'], /^https:\/\/coderoot\.app\/review\/detail\?id=sub_/);
+  const id = run.outputs['submission-id'];
+  assert.match(id, /^sub_/);
+  assert.equal(run.outputs['review-url'], `https://coderoot.app/review/detail/?id=${id}`);
   assert.equal(run.outputs['flow'], 'published');
   assert.match(run.summary, /GitHub identity token/);
-  assert.match(run.summary, /\*\*Queue:\*\* https:\/\/coderoot\.app\/review/);
+  assert.ok(
+    run.summary.includes(`**[Approve in CodeRoot → ${id}](https://coderoot.app/review/detail/?id=${id})**`),
+    run.summary
+  );
+});
+
+test('submit: a review_url from the gate is linked as given', async (t) => {
+  const art = artifact('1.3.0');
+  const { mock, fakes } = withServers(t, { versions: { [`${NAME}@1.3.0`]: { integrity: art.integrity } } }, { reviewUrl: true });
+
+  const run = runAction(env(mock, fakes, { CR_FLOW: 'published', CR_ARTIFACT: art.file, CR_NAME: NAME, CR_VERSION: '1.3.0' }), art.dir);
+  assert.equal(run.code, 0, run.stderr);
+
+  const id = run.outputs['submission-id'];
+  assert.equal(run.outputs['review-url'], `https://gate.example/queue/${id}`);
+  assert.ok(run.summary.includes(`**[Approve in CodeRoot → ${id}](https://gate.example/queue/${id})**`), run.summary);
+  assert.equal(run.summary.includes('coderoot.app/review/detail'), false);
 });
 
 test('flow published: an artifact that is not what npm serves is refused locally, exit 2, nothing submitted', async (t) => {
