@@ -65,6 +65,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Off the default branch no cache is saved, and the last one from main may
+      # have expired, so learn the revocation in this job. On main the outage step
+      # relies on the cache self-use saved, which tests the save and restore path.
+      - name: Learn the revocation in this job
+        if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        id: learn
+        uses: ./
+        with:
+          mode: verify
+          hash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+          fail-on: never
+
+      - name: The verdict must be `revoked`
+        if: steps.learn.outcome == 'success'
+        run: |
+          test "${{ steps.learn.outputs.verdict }}" = "revoked" \
+            || { echo "::error::expected revoked, got ${{ steps.learn.outputs.verdict }}"; exit 1; }
+
       - name: Verify the revoked fixture during an outage
         id: outage
         continue-on-error: true

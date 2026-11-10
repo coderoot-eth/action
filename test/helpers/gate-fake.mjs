@@ -54,7 +54,8 @@ function fileFrom(req, body) {
   return body.subarray(start, end);
 }
 
-export function createGate({ link = LINK } = {}) {
+/** `reviewUrl`: include a `review_url` in the submit response. The live gate omits it. */
+export function createGate({ link = LINK, reviewUrl = false } = {}) {
   const uploads = new Map();
   const submissions = new Map();
   const byKey = new Map();
@@ -137,7 +138,7 @@ export function createGate({ link = LINK } = {}) {
       flow: body.flow,
       attestation: { state: 'none', eas_uid: null, tx_hash: null },
       publish: { state: 'none', registry_url: null },
-      review_url: `https://coderoot.app/review/detail?id=${id}`,
+      ...(reviewUrl ? { review_url: `https://gate.example/queue/${id}` } : {}),
       idempotent_replay: false,
     };
     submissions.set(identity, response);
